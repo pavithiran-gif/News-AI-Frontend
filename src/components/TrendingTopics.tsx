@@ -1,13 +1,82 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { queryAPI } from '@/services/api';
-import type { TrendingTopic } from '@/types';
-import { TrendingUp, AlertCircle, RefreshCw } from 'lucide-react';
+import { queryAPI, articleAPI } from '@/services/api';
+import type { TrendingTopic, Article } from '@/types';
+import { TrendingUp, AlertCircle, RefreshCw, Newspaper, Calendar, User, ExternalLink } from 'lucide-react';
+
+// List item component for displaying articles in the dialog
+function ArticleListItem({ article }: { article: Article }) {
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  return (
+    <a
+      href={article.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-start gap-4 p-4 border rounded-lg hover:bg-muted/50 hover:border-primary/30 transition-colors group"
+    >
+      {/* Thumbnail */}
+      {article.image_url ? (
+        <img
+          src={article.image_url}
+          alt=""
+          className="w-16 h-16 object-cover rounded flex-shrink-0"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.display = "none";
+          }}
+        />
+      ) : (
+        <div className="w-16 h-16 bg-muted rounded flex-shrink-0 flex items-center justify-center">
+          <Newspaper className="h-6 w-6 text-muted-foreground/50" />
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <h4 className="font-medium text-sm line-clamp-2 group-hover:text-primary transition-colors">
+          {article.title}
+        </h4>
+        <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Calendar className="h-3 w-3" />
+            {formatDate(article.published_at)}
+          </span>
+          {article.author && (
+            <span className="flex items-center gap-1">
+              <User className="h-3 w-3" />
+              <span className="truncate max-w-[100px]">{article.author}</span>
+            </span>
+          )}
+          <Badge variant="outline" className="text-xs">
+            {article.source_name}
+          </Badge>
+        </div>
+      </div>
+
+      {/* External link icon */}
+      <ExternalLink className="h-4 w-4 text-muted-foreground flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+    </a>
+  );
+}
 
 export function TrendingTopics() {
   const [topics, setTopics] = useState<TrendingTopic[]>([]);
@@ -15,6 +84,12 @@ export function TrendingTopics() {
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(7);
   const [topN, setTopN] = useState(10);
+
+  // State for topic articles dialog
+  const [selectedTopic, setSelectedTopic] = useState<TrendingTopic | null>(null);
+  const [topicArticles, setTopicArticles] = useState<Article[]>([]);
+  const [isLoadingArticles, setIsLoadingArticles] = useState(false);
+  const [articlesError, setArticlesError] = useState<string | null>(null);
 
   const fetchTrendingTopics = async () => {
     setIsLoading(true);
@@ -36,6 +111,31 @@ export function TrendingTopics() {
 
   const handleRefresh = () => {
     fetchTrendingTopics();
+  };
+
+  const handleTopicClick = async (topic: TrendingTopic) => {
+    setSelectedTopic(topic);
+    setIsLoadingArticles(true);
+    setArticlesError(null);
+    setTopicArticles([]);
+
+    try {
+      const response = await articleAPI.getArticles({
+        search: topic.topic,
+        limit: 50,
+      });
+      setTopicArticles(response.articles);
+    } catch (err) {
+      setArticlesError(err instanceof Error ? err.message : 'Failed to fetch articles');
+    } finally {
+      setIsLoadingArticles(false);
+    }
+  };
+
+  const handleCloseDialog = () => {
+    setSelectedTopic(null);
+    setTopicArticles([]);
+    setArticlesError(null);
   };
 
   const getTopicRank = (index: number) => {
@@ -133,8 +233,9 @@ export function TrendingTopics() {
           {topics.map((topic, index) => (
             <Card
               key={topic.topic}
-              className="hover:shadow-md transition-shadow border-l-4"
+              className="hover:shadow-md transition-shadow border-l-4 cursor-pointer hover:bg-muted/50"
               style={{ borderLeftColor: index < 3 ? 'hsl(var(--primary))' : 'hsl(var(--border))' }}
+              onClick={() => handleTopicClick(topic)}
             >
               <CardContent className="p-6">
                 <div className="flex items-center gap-4">
@@ -182,6 +283,68 @@ export function TrendingTopics() {
           </CardContent>
         </Card>
       )}
+
+      {/* Topic Articles Dialog */}
+      <Dialog open={!!selectedTopic} onOpenChange={(open) => !open && handleCloseDialog()}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              <span className="capitalize">{selectedTopic?.topic}</span>
+            </DialogTitle>
+            <DialogDescription>
+              {selectedTopic && (
+                <span className="flex items-center gap-3">
+                  <Badge variant="secondary">{selectedTopic.total_articles} total articles</Badge>
+                  <Badge variant="outline">Trend Score: {(selectedTopic.avg_trend_score * 100).toFixed(1)}%</Badge>
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto pr-2 mt-4">
+            {/* Loading State */}
+            {isLoadingArticles && (
+              <div className="space-y-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-4 p-4 border rounded-lg">
+                    <Skeleton className="h-4 w-4 flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Error State */}
+            {articlesError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{articlesError}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Articles List */}
+            {!isLoadingArticles && !articlesError && topicArticles.length > 0 && (
+              <div className="space-y-2">
+                {topicArticles.map((article) => (
+                  <ArticleListItem key={article.id} article={article} />
+                ))}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoadingArticles && !articlesError && topicArticles.length === 0 && (
+              <div className="text-center py-12">
+                <Newspaper className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No articles found for this topic.</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
