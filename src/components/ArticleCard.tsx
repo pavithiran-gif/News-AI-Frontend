@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -6,10 +7,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Article, ArticleWithSimilarity } from "@/types";
-import { Calendar, ExternalLink, User, Newspaper } from "lucide-react";
+import { Calendar, ExternalLink, User, Newspaper, X } from "lucide-react";
 
 interface ArticleCardProps {
   article: Article | ArticleWithSimilarity;
@@ -20,6 +29,8 @@ export function ArticleCard({
   article,
   showSimilarity = false,
 }: ArticleCardProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
@@ -46,9 +57,13 @@ export function ArticleCard({
   const similarity = (article as ArticleWithSimilarity).similarity;
 
   return (
-    <Card className="group flex flex-col h-full hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border-border/50 hover:border-primary/30 overflow-hidden">
-      {/* Image with overlay */}
-      <div className="relative w-full h-48 overflow-hidden bg-muted">
+    <>
+      <Card
+        className="group flex flex-col h-full hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border-border/50 hover:border-primary/30 overflow-hidden cursor-pointer"
+        onClick={() => setIsOpen(true)}
+      >
+        {/* Image with overlay */}
+        <div className="relative w-full h-48 overflow-hidden bg-muted">
         {article.image_url ? (
           <>
             <img
@@ -124,6 +139,7 @@ export function ArticleCard({
           asChild
           variant="ghost"
           className="w-full justify-between hover:bg-primary/10 hover:text-primary group/btn"
+          onClick={(e) => e.stopPropagation()}
         >
           <a href={article.url} target="_blank" rel="noopener noreferrer">
             <span>Read full article</span>
@@ -132,5 +148,94 @@ export function ArticleCard({
         </Button>
       </CardFooter>
     </Card>
+
+      {/* Expanded Article Dialog */}
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <Badge>{article.category_name}</Badge>
+                  {showSimilarity && similarity !== undefined && (
+                    <Badge variant="secondary">
+                      {(similarity * 100).toFixed(0)}% match
+                    </Badge>
+                  )}
+                  {article.sentiment_score !== undefined &&
+                    article.sentiment_score !== null && (
+                      <Badge variant={getSentimentColor(article.sentiment_score)}>
+                        {getSentimentLabel(article.sentiment_score)}
+                      </Badge>
+                    )}
+                </div>
+                <DialogTitle className="text-xl leading-tight">
+                  {article.title}
+                </DialogTitle>
+                <DialogDescription className="mt-2">
+                  {article.description}
+                </DialogDescription>
+              </div>
+            </div>
+
+            {/* Meta info */}
+            <div className="flex flex-wrap items-center gap-4 mt-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4" />
+                <span>{formatDate(article.published_at)}</span>
+              </div>
+              {article.author && (
+                <div className="flex items-center gap-1.5">
+                  <User className="h-4 w-4" />
+                  <span>{article.author}</span>
+                </div>
+              )}
+              <Badge variant="outline">{article.source_name}</Badge>
+            </div>
+          </DialogHeader>
+
+          {/* Article Image */}
+          {article.image_url && (
+            <div className="relative w-full h-48 overflow-hidden rounded-lg bg-muted my-4 flex-shrink-0">
+              <img
+                src={article.image_url}
+                alt={article.title}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </div>
+          )}
+
+          {/* Full Article Content */}
+          <div className="flex-1 overflow-y-auto pr-2">
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              {article.content ? (
+                <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                  {article.content}
+                </div>
+              ) : (
+                <p className="text-muted-foreground italic">
+                  Full content not available. Click the button below to read the article on the source website.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="flex-shrink-0 mt-4">
+            <Button
+              asChild
+              className="w-full sm:w-auto"
+            >
+              <a href={article.url} target="_blank" rel="noopener noreferrer">
+                <span>Read on source</span>
+                <ExternalLink className="h-4 w-4 ml-2" />
+              </a>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
